@@ -126,3 +126,10 @@
 -keep class kotlin.Metadata { *; }
 -keep class kotlin.reflect.** { *; }
 -dontwarn kotlin.reflect.**
+# Seguridad: en la versión release se eliminan los logs de depuración/informativos
+# (pueden contener nombres, IDs de reportes u otros datos operacionales)
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+}
