@@ -1,0 +1,467 @@
+package com.inspectapro.demo
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import com.inspectapro.demo.data.session.UserSession
+import com.inspectapro.demo.ui.navigation.Screen
+import com.inspectapro.demo.ui.components.NetworkStatusBanner
+import com.inspectapro.demo.ui.components.QRScannerScreen
+import com.inspectapro.demo.ui.screens.ActivosCrudScreen
+import com.inspectapro.demo.ui.screens.AssetHistoryScreen
+import com.inspectapro.demo.ui.screens.AssetListScreen
+import com.inspectapro.demo.ui.screens.CerrarHorometroScreen
+import com.inspectapro.demo.ui.screens.ChecklistScreen
+import com.inspectapro.demo.ui.screens.ChecklistSelectionScreen
+import com.inspectapro.demo.ui.screens.HomeScreen
+import com.inspectapro.demo.ui.screens.HorometrosPendientesScreen
+import com.inspectapro.demo.ui.screens.LoginScreen
+import com.inspectapro.demo.ui.screens.PhotoViewerScreen
+import com.inspectapro.demo.ui.screens.PlantillaEditorScreen
+import com.inspectapro.demo.ui.screens.PlantillasCrudScreen
+import com.inspectapro.demo.ui.screens.ReportDetailsScreen
+import com.inspectapro.demo.ui.screens.SupervisorPanelScreen
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.inspectapro.demo.viewmodel.ActivoViewModel
+import com.inspectapro.demo.ui.theme.ACATheme
+import com.inspectapro.demo.utils.HorometroNotificationHelper
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.core.content.ContextCompat
+
+/**
+ * Aplicación desarrollada por: Andrés Amaya Garcés
+ * Proyecto: Checklist Grúas Horquilla
+ * Año: 2025
+ */
+
+class MainActivity : ComponentActivity() {
+
+    private val notificationDestination = mutableStateOf<String?>(null)
+
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            android.util.Log.d("MainActivity", "Permiso de notificaciones concedido: $granted")
+        }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        updateNotificationDestination(intent)
+        requestNotificationPermissionIfNeeded()
+        enableEdgeToEdge()
+        setContent {
+            val destination by notificationDestination
+            ACATheme {
+                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                    ACAApp(
+                        modifier = Modifier.padding(innerPadding),
+                        notificationDestination = destination,
+                        onNotificationDestinationConsumed = {
+                            notificationDestination.value = null
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        updateNotificationDestination(intent)
+    }
+
+    private fun updateNotificationDestination(intent: Intent?) {
+        val route = intent?.getStringExtra(HorometroNotificationHelper.EXTRA_TARGET_ROUTE)
+        if (!route.isNullOrEmpty()) {
+            notificationDestination.value = route
+        }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val hasPermission = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasPermission) {
+                requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+}
+
+@Composable
+fun ACAApp(
+    modifier: Modifier = Modifier,
+    navController: NavHostController = rememberNavController(),
+    notificationDestination: String? = null,
+    onNotificationDestinationConsumed: () -> Unit = {}
+) {
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(notificationDestination) {
+        val destination = notificationDestination
+        if (destination != null) {
+            val loggedIn = withTimeoutOrNull(5 * 60 * 1000L) {
+                while (UserSession.getCurrentUser() == null) {
+                    android.util.Log.d(
+                        "MainActivity",
+                        "Esperando sesión de usuario para navegar a $destination"
+                    )
+                    delay(300)
+                }
+                true
+            } ?: false
+
+            if (!loggedIn) {
+                android.util.Log.d(
+                    "MainActivity",
+                    "Tiempo de espera agotado para navegar a $destination"
+                )
+                onNotificationDestinationConsumed()
+                return@LaunchedEffect
+            }
+            android.util.Log.d(
+                "MainActivity",
+                "Procesando navegación desde notificación hacia: $destination"
+            )
+            navController.navigate(Screen.Home.route) {
+                launchSingleTop = true
+            }
+            navController.navigate(destination) {
+                launchSingleTop = true
+            }
+            onNotificationDestinationConsumed()
+        }
+    }
+
+    Column(modifier = modifier) {
+        // Banner de estado de red - se muestra solo cuando está offline
+        NetworkStatusBanner()
+
+        // Navegación principal
+        NavHost(
+            navController = navController,
+            startDestination = Screen.Login.route,
+            modifier = Modifier.weight(1f)
+        ) {
+        // Ruta de login
+        composable(Screen.Login.route) {
+            LoginScreen(
+                onLoginSuccess = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        // Pantalla principal
+        composable(Screen.Home.route) {
+            HomeScreen(
+                onNavigateToAssetList = {
+                    navController.navigate(Screen.AssetList.route)
+                },
+                onNavigateToQRScanner = {
+                    navController.navigate(Screen.QRScanner.route)
+                },
+                onNavigateToSupervisorPanel = {
+                    navController.navigate(Screen.SupervisorPanel.route)
+                },
+                onNavigateToHorometrosPendientes = {
+                    navController.navigate(Screen.HorometrosPendientes.route)
+                },
+                onLogout = {
+                    scope.launch {
+                        val logoutExitoso = UserSession.logoutCompleto()
+
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+
+                        if (logoutExitoso) {
+                            android.util.Log.d("MainActivity", "Usuario desconectado exitosamente")
+                        } else {
+                            android.util.Log.w("MainActivity", "Logout completado con advertencias")
+                        }
+                    }
+                }
+            )
+        }
+
+        // Pantalla de lista de activos
+        composable(Screen.AssetList.route) {
+            AssetListScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onAssetSelected = { activo ->
+                    // Navegar a selección de checklist pasando el ID del activo
+                    navController.navigate(
+                        Screen.ChecklistSelection.createRoute(activo.id ?: 0)
+                    )
+                }
+            )
+        }
+
+        // Pantalla de escáner QR
+        composable(Screen.QRScanner.route) {
+            val activoViewModel: ActivoViewModel = viewModel()
+            val activoSeleccionado by activoViewModel.activoSeleccionado.collectAsState()
+            val qrScanError by activoViewModel.qrScanError.collectAsState()
+
+            // Si se encuentra un activo, navegar a selección de checklist
+            LaunchedEffect(activoSeleccionado) {
+                activoSeleccionado?.let { activo ->
+                    activoViewModel.limpiarSeleccion()
+                    navController.navigate(
+                        Screen.ChecklistSelection.createRoute(activo.id ?: 0)
+                    ) {
+                        popUpTo(Screen.Home.route)
+                    }
+                }
+            }
+
+            QRScannerScreen(
+                onQRCodeScanned = { qrCode ->
+                    activoViewModel.buscarActivoPorQR(qrCode)
+                },
+                onClose = {
+                    activoViewModel.limpiarErrorQR()
+                    navController.popBackStack()
+                }
+            )
+
+            // Mostrar diálogo de error si el código no existe
+            qrScanError?.let { error ->
+                AlertDialog(
+                    onDismissRequest = {
+                        activoViewModel.limpiarErrorQR()
+                    },
+                    title = { Text("Código QR no encontrado") },
+                    text = { Text(error) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            activoViewModel.limpiarErrorQR()
+                        }) {
+                            Text("Reintentar")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = {
+                            activoViewModel.limpiarErrorQR()
+                            navController.popBackStack()
+                        }) {
+                            Text("Cancelar")
+                        }
+                    }
+                )
+            }
+        }
+
+        // Pantalla de selección de checklist
+        composable(
+            route = Screen.ChecklistSelection.route,
+            arguments = listOf(navArgument("assetId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val assetId = backStackEntry.arguments?.getInt("assetId") ?: 0
+            ChecklistSelectionScreen(
+                assetId = assetId,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onViewHistory = { assetId ->
+                    navController.navigate(Screen.AssetHistory.createRoute(assetId))
+                },
+                onChecklistSelected = { assetId, templateId ->
+                    navController.navigate(
+                        Screen.Checklist.createRoute(assetId, templateId)
+                    )
+                }
+            )
+        }
+        // Pantalla de historial del activo
+        composable(
+            route = Screen.AssetHistory.route,
+            arguments = listOf(navArgument("assetId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val assetId = backStackEntry.arguments?.getInt("assetId") ?: 0
+            AssetHistoryScreen(
+                assetId = assetId,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNewInspection = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(Screen.PlantillasCrud.route) {
+            PlantillasCrudScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToEditor = { plantillaId ->
+                    navController.navigate(Screen.PlantillaEditor.createRoute(plantillaId))
+                }
+            )
+        }
+        composable(Screen.SupervisorPanel.route) {
+            SupervisorPanelScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onViewReportDetails = { reporteId ->
+                    navController.navigate(Screen.ReportDetails.createRoute(reporteId))
+                },
+                onNavigateToActivosCrud = {
+                    navController.navigate(Screen.ActivosCrud.route)
+                },
+                onNavigateToPlantillasCrud = { // NUEVO
+                    navController.navigate(Screen.PlantillasCrud.route)
+                }
+            )
+        }
+        // Ruta de detalles del reporte
+        composable(
+            route = Screen.ReportDetails.route,
+            arguments = listOf(navArgument("reportId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val reportId = backStackEntry.arguments?.getString("reportId") ?: ""
+            ReportDetailsScreen(
+                reporteId = reportId,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onViewPhoto = { photos, index ->
+                    navController.navigate(Screen.PhotoViewer.createRoute(photos, index))
+                }
+            )
+        }
+        // Ruta CRUD de activos (grúas)
+        composable(Screen.ActivosCrud.route) {
+            ActivosCrudScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        // Pantalla de checklist
+        composable(
+            route = Screen.Checklist.route,
+            arguments = listOf(
+                navArgument("assetId") { type = NavType.IntType },
+                navArgument("templateId") { type = NavType.IntType }
+            )
+        ) { backStackEntry ->
+            val assetId = backStackEntry.arguments?.getInt("assetId") ?: 0
+            val templateId = backStackEntry.arguments?.getInt("templateId") ?: 0
+            ChecklistScreen(
+                assetId = assetId,
+                templateId = templateId,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onChecklistCompleted = {
+                    // Navegar de vuelta al home después de completar
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = false }
+                    }
+                }
+            )
+        }
+        // Ruta del editor
+        composable(
+            route = Screen.PlantillaEditor.route,
+            arguments = listOf(navArgument("plantillaId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val plantillaId = backStackEntry.arguments?.getInt("plantillaId") ?: 0
+            PlantillaEditorScreen(
+                plantillaId = plantillaId,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        // Ruta PhotoViewer
+        composable(
+            route = Screen.PhotoViewer.route,
+            arguments = listOf(
+                navArgument("photos") { type = NavType.StringType },
+                navArgument("initialIndex") { type = NavType.IntType }
+            )
+        ) { backStackEntry ->
+            val photosEncoded = backStackEntry.arguments?.getString("photos") ?: ""
+            val initialIndex = backStackEntry.arguments?.getInt("initialIndex") ?: 0
+
+            // Decodificar las URLs
+            val photos = photosEncoded.split(",").map {
+                java.net.URLDecoder.decode(it, "UTF-8")
+            }
+
+            PhotoViewerScreen(
+                photos = photos,
+                initialIndex = initialIndex,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        // Horómetros Pendientes
+        composable(Screen.HorometrosPendientes.route) {
+            HorometrosPendientesScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToCerrar = { reporteId ->
+                    navController.navigate(Screen.CerrarHorometro.createRoute(reporteId))
+                }
+            )
+        }
+
+        // Cerrar Horómetro
+        composable(
+            route = Screen.CerrarHorometro.route,
+            arguments = listOf(navArgument("reporteId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val reporteId = backStackEntry.arguments?.getString("reporteId") ?: ""
+            CerrarHorometroScreen(
+                reporteId = reporteId,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        }
+    }
+}
+
+
+
+

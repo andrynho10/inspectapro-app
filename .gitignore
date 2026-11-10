@@ -1,0 +1,17 @@
+*.iml
+.gradle
+/build
+/app/build
+/captures
+.externalNativeBuild
+.cxx
+.kotlin
+.idea
+.DS_Store
+# Configuración local y secretos (nunca subir)
+local.properties
+keystore.properties
+*.jks
+*.keystore
+google-services.json
+app/release/
