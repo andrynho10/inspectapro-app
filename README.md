@@ -1,6 +1,6 @@
 # InspectaPro – Demo · App Android de inspecciones
 
-**App Android para operadores de grúas horquilla.** Reemplaza el checklist en papel: escaneas el QR de la grúa, completas la inspección con fotos de las fallas, registras el horómetro y el supervisor la ve al instante en el panel web. **Funciona sin internet.**
+**App Android para operadores de grúas horquilla, offline-first y con seguridad en el servidor.** Reemplaza el checklist en papel: escaneas el QR de la grúa, completas la inspección con fotos de las fallas, registras el horómetro y el supervisor la ve al instante en el panel web. **Funciona sin internet.**
 
 > **Desarrollado como práctica profesional; esta es una versión demo con datos ficticios.**
 > Empresas, personas, grúas y fotos son inventados. La demo se reinicia automáticamente cada noche.
@@ -58,6 +58,15 @@ Una app pensada para el operador en terreno, a menudo en bodegas con mala señal
 | Otros | ZXing (QR), Coil (imágenes), kotlinx.serialization |
 
 La base de datos (tablas, RLS, funciones y datos demo) está documentada en el repo del panel: [`supabase/migrations`](https://github.com/andrynho10/inspectapro-panel/tree/main/supabase/migrations).
+
+## 🔒 Seguridad en la app
+
+- **Sin secretos en el APK:** solo lleva la clave pública de Supabase. Lo que cada usuario puede leer o escribir lo controla el servidor con Row Level Security, no la app.
+- **Sin respaldos de datos sensibles:** la sesión, la base local y las fotos se excluyen del respaldo en la nube y de la transferencia entre equipos (`allowBackup=false` y reglas de extracción de datos).
+- **Solo HTTPS:** el tráfico HTTP sin cifrar está deshabilitado.
+- **Release ofuscado con R8 y sin logs de depuración**, que podrían filtrar datos operacionales.
+- **Límites anti-abuso en el servidor:** inspecciones, fotos y respuestas por usuario y hora.
+- Detalle completo de las medidas en el [README del panel](https://github.com/andrynho10/inspectapro-panel#-seguridad).
 
 ## Qué es distinto en esta versión demo
 
